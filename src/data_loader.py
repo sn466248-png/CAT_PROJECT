@@ -36,6 +36,24 @@ def load_dataset(csv_path=DATA_PATH, edge_case_type="NONE"):
         df.loc[indices_to_corrupt, 'timestamp'] = np.nan
         df['datetime'] = pd.to_datetime(df['timestamp'])
 
+    elif edge_case_type == "MISSING_METER_VALUES":
+        # Case 1: Missing meter values in recent intervals
+        indices_missing = df.index[-30:-10]
+        df.loc[indices_missing, 'total_kw'] = np.nan
+        df.loc[indices_missing, 'total_kwh'] = np.nan
+
+    elif edge_case_type == "SCHEDULE_MISMATCH":
+        # Case 4: Extreme after-hours schedule mismatch (HVAC & Lighting running full blast overnight)
+        night_mask = (df['datetime'].dt.hour >= 0) & (df['datetime'].dt.hour <= 4)
+        df.loc[night_mask, 'hvac_kw'] = 145.0
+        df.loc[night_mask, 'lighting_kw'] = 65.0
+        df.loc[night_mask, 'total_kw'] = df.loc[night_mask, 'hvac_kw'] + df.loc[night_mask, 'lighting_kw'] + df.loc[night_mask, 'process_kw'] + df.loc[night_mask, 'aux_kw']
+
+    elif edge_case_type == "EXTREME_OUTLIER":
+        # Case 5: Unexpected extreme meter value (e.g. 1450 kW surge exceeding physical substation limit)
+        outlier_indices = df.index[-5]
+        df.loc[outlier_indices, 'total_kw'] = 1450.0
+
     return df
 
 def get_summary_metrics(df):

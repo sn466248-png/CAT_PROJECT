@@ -4,8 +4,19 @@ import pandas as pd
 import numpy as np
 
 from src.data_loader import load_dataset, get_summary_metrics
-from src.disaggregation import compute_load_disaggregation, analyze_peak_demand_period, get_evidence_chains, calculate_mv_experiment_results
+from src.disaggregation import (
+    compute_load_disaggregation,
+    analyze_peak_demand_period,
+    get_evidence_chains,
+    calculate_mv_experiment_results
+)
 from src.edge_cases import evaluate_data_quality
+from preprocessing.clean_data import chronological_split
+from models.disaggregation import (
+    predict_rule_based_disaggregation,
+    NILMDisaggregator,
+    benchmark_disaggregation_methods
+)
 
 class TestEnergyDisaggregation(unittest.TestCase):
 
@@ -75,6 +86,42 @@ class TestEnergyDisaggregation(unittest.TestCase):
         missing_ts_df = load_dataset(edge_case_type="MISSING_TIMESTAMPS")
         q_ts = evaluate_data_quality(missing_ts_df, edge_case_type="MISSING_TIMESTAMPS")
         self.assertEqual(q_ts["status"], "REDUCED CONFIDENCE")
+
+    def test_rule_based_disaggregation(self):
+        rb_preds = predict_rule_based_disaggregation(self.sample_df.head(100))
+        self.assertEqual(len(rb_preds), 100)
+        for col in ["hvac_kw", "process_kw", "lighting_kw", "aux_kw"]:
+            self.assertIn(col, rb_preds.columns)
+            self.assertTrue((rb_preds[col] >= 0).all())
+
+    def test_nilm_model_and_conservation_of_energy(self):
+        train_df, val_df, test_df = chronological_split(self.sample_df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15)
+        model = NILMDisaggregator(n_estimators=15, random_state=42)
+        model.fit(train_df)
+        self.assertTrue(model.is_fitted)
+
+        test_sample = test_df.head(50).copy()
+        preds = model.predict(test_sample)
+
+        # Check Conservation of Energy: sum of predicted loads must equal total_kw
+        predicted_sum = preds.sum(axis=1).values
+        actual_total = test_sample["total_kw"].values
+        np.testing.assert_allclose(predicted_sum, actual_total, rtol=1e-2)
+
+    def test_benchmark_metrics_improvement(self):
+        train_df, val_df, test_df = chronological_split(self.sample_df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15)
+        model = NILMDisaggregator(n_estimators=15, random_state=42)
+        model.fit(train_df)
+        
+        bench_df, summary = benchmark_disaggregation_methods(test_df.head(100), model)
+        self.assertIn("MAE (kW)", bench_df.columns)
+        self.assertIn("RMSE (kW)", bench_df.columns)
+        self.assertIn("R² Score", bench_df.columns)
+        self.assertIn("NMBE (%)", bench_df.columns)
+        self.assertIn("CV(RMSE) (%)", bench_df.columns)
+        
+        # NILM model should achieve lower MAE than the static rule-based heuristic
+        self.assertGreater(summary["mae_improvement_pct"], 0.0)
 
 if __name__ == "__main__":
     unittest.main()

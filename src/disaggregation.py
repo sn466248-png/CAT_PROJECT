@@ -1,6 +1,24 @@
 import pandas as pd
 import numpy as np
 
+# Export new modular components
+from models.disaggregation import (
+    NILMDisaggregator,
+    predict_rule_based_disaggregation,
+    benchmark_disaggregation_methods,
+    train_or_load_nilm_model
+)
+from mv.metrics import (
+    calculate_nmbe,
+    calculate_cv_rmse,
+    calculate_mae,
+    calculate_rmse,
+    calculate_r2,
+    evaluate_ashrae14_compliance,
+    compute_all_metrics
+)
+from mv.savings import calculate_automated_savings
+
 def compute_load_disaggregation(df):
     """
     Computes cumulative energy consumption (kWh) and percentage share across all load categories.

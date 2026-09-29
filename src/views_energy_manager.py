@@ -120,20 +120,25 @@ def render_energy_manager_view(df, quality_info):
     st.markdown("---")
 
     # 4. Measurement & Verification (M&V) Baseline Experiment
-    st.subheader("🧪 M&V Experiment: Baseline vs Intervention (IPMVP Option C)")
+    st.subheader("🧪 M&V Experiment: Baseline vs Intervention (IPMVP Option C & ASHRAE 14)")
 
-    mv_data = calculate_mv_experiment_results(df)
+    from mv.savings import calculate_automated_savings
+    savings_data = calculate_automated_savings(df, target_reduction_pct=10.0)
 
-    col_mv1, col_mv2, col_mv3 = st.columns(3)
+    col_mv1, col_mv2, col_mv3, col_mv4 = st.columns(4)
     with col_mv1:
-        st.markdown(f"**Baseline Average Peak Demand:** `{mv_data['baseline_mean_peak_kw']} kW`")
-        st.markdown(f"**Baseline Maximum Peak Demand:** `{mv_data['baseline_max_peak_kw']} kW`")
+        st.markdown(f"**Baseline Mean Peak:** `{savings_data['measured_baseline_peak_mean_kw']} kW`")
+        st.markdown(f"**Baseline Max Peak:** `{savings_data['measured_baseline_peak_max_kw']} kW`")
     with col_mv2:
-        st.markdown(f"**Target Peak Reduction:** `{mv_data['target_reduction_pct']}%`")
-        st.markdown(f"**Actual Measured Avg Reduction:** `{mv_data['measured_avg_reduction_pct']}%`")
+        st.markdown(f"**Target Reduction:** `{savings_data['target_reduction_pct']}%`")
+        st.markdown(f"**Actual Measured Avg Cut:** `{savings_data['peak_avg_reduction_pct']}%`")
     with col_mv3:
-        st.markdown(f"**Verified Peak Demand Reduction:** `{mv_data['kw_demand_saved']} kW`")
-        st.markdown(f"**Total Verified Savings:** `${mv_data['total_est_monthly_savings_usd']:,}/month`")
+        st.markdown(f"**Peak Demand Shaved:** `{savings_data['peak_demand_reduction_kw']} kW`")
+        st.markdown(f"**Total Verified Savings:** `${savings_data['total_est_monthly_savings_usd']:,}/mo`")
+    with col_mv4:
+        st.markdown(f"**ASHRAE 14 NMBE:** `{savings_data['baseline_nmbe_pct']}%`")
+        st.markdown(f"**ASHRAE 14 CV(RMSE):** `{savings_data['baseline_cv_rmse_pct']}%`")
+        st.markdown(f"**Status:** `{'🟢 ' + savings_data['ashrae_compliance']['status_label']}`")
 
     st.markdown("##### Verification Protocol Breakdown:")
     st.markdown("""
@@ -141,8 +146,10 @@ def render_energy_manager_view(df, quality_info):
     - **Target:** 10.0% reduction in peak-period electrical demand (18:00–22:00).
     - **Operational Intervention:** Pre-cooling building mass (14:00–17:30), shifting Line 2 maintenance (17:30 cutoff), and automated 20:00 lighting sweep.
     - **Measured Result:** **{avg_red}% Average Demand Reduction** and **{max_red}% Peak Load Shaving**, resulting in verified savings of **${savings:,}/mo**.
+    - **Model Uncertainty (95% CI):** **±{uncertainty}%** under ASHRAE Guideline 14 fractional savings uncertainty.
     """.format(
-        avg_red=mv_data['measured_avg_reduction_pct'],
-        max_red=mv_data['measured_max_reduction_pct'],
-        savings=mv_data['total_est_monthly_savings_usd']
+        avg_red=savings_data['peak_avg_reduction_pct'],
+        max_red=savings_data['peak_demand_reduction_pct'],
+        savings=savings_data['total_est_monthly_savings_usd'],
+        uncertainty=savings_data['savings_uncertainty_95pct']
     ))
