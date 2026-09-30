@@ -2,7 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from src.disaggregation import compute_load_disaggregation, analyze_peak_demand_period, get_evidence_chains, calculate_mv_experiment_results
+from src.disaggregation import (
+    compute_load_disaggregation,
+    analyze_peak_demand_period,
+    get_evidence_chains,
+    calculate_mv_experiment_results,
+    train_or_load_nilm_model,
+    predict_rule_based_disaggregation
+)
 
 def render_energy_manager_view(df, quality_info):
     """
@@ -12,9 +19,37 @@ def render_energy_manager_view(df, quality_info):
     st.caption("Load breakdown, peak demand analysis, tariff optimization, and evidence-supported recommendations.")
 
     # 1. Disaggregation Section
-    st.subheader("📊 Energy Disaggregation Breakdown")
+    col_hdr, col_eng = st.columns([2, 1])
+    with col_hdr:
+        st.subheader("📊 Energy Disaggregation Breakdown")
+    with col_eng:
+        engine_mode = st.selectbox(
+            "Disaggregation Engine / Source:",
+            [
+                "Calibrated ML / NILM Decomposition",
+                "Ground Truth Sub-Meter Telemetry",
+                "Legacy Rule-Based Heuristics"
+            ],
+            index=0,
+            help="Switch between Supervised ML/NILM Random Forest model, sub-metered ground truth, and legacy deterministic heuristics."
+        )
 
-    disagg = compute_load_disaggregation(df)
+    # Prepare view dataframe based on selected engine
+    if engine_mode == "Calibrated ML / NILM Decomposition":
+        nilm_model = train_or_load_nilm_model(df)
+        preds = nilm_model.predict(df)
+        df_view = df.copy()
+        for col in ["hvac_kw", "process_kw", "lighting_kw", "aux_kw"]:
+            df_view[col] = preds[col]
+    elif engine_mode == "Legacy Rule-Based Heuristics":
+        preds = predict_rule_based_disaggregation(df)
+        df_view = df.copy()
+        for col in ["hvac_kw", "process_kw", "lighting_kw", "aux_kw"]:
+            df_view[col] = preds[col]
+    else:
+        df_view = df
+
+    disagg = compute_load_disaggregation(df_view)
 
     if disagg:
         col1, col2, col3, col4, col5 = st.columns(5)
@@ -46,7 +81,7 @@ def render_energy_manager_view(df, quality_info):
 
     with col_chart2:
         st.write("##### 24-Hour Load Profile Disaggregation (Average Day)")
-        df_copy = df.copy()
+        df_copy = df_view.copy()
         df_copy['hour_min'] = df_copy['datetime'].dt.strftime('%H:%M')
         hourly_disagg = df_copy.groupby('hour_min')[['hvac_kw', 'process_kw', 'lighting_kw', 'aux_kw']].mean().reset_index()
 
